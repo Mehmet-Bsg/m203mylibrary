@@ -9,8 +9,15 @@ $ pip install m203mylibrary
 
 ## Usage
 
+Final goal : build option strategies and backtest them.
 
-- TODO
+`test_function` can be used to test if the import of the package was sucessfull and evrything works well.
+
+```python
+from m203mylibrary.m203mylibrary import test_function
+
+test_function()
+```
 
 ## Contributing
 
