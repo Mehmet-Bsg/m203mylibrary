@@ -8,6 +8,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10.15"
+pybacktestchain = "^0.2.1"
+numba = "^0.60.0"
 
 [tool.poetry.dev-dependencies]
 
