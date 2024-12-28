@@ -38,7 +38,7 @@ class Option:
         self.time_to_maturity = time_to_maturity
         self.implied_volatility = implied_volatility
 
-    
+    @staticmethod
     def norm_dist(d: float) -> float:
         """
         Standard normal cumulative distribution function.
@@ -48,7 +48,7 @@ class Option:
         """
         return norm.cdf(d)
 
-    
+    @staticmethod
     def normal_pdf(d: float) -> float:
         """
         Standard normal probability density function.
