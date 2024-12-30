@@ -1,21 +1,23 @@
 #%%
 import yfinance as yf
-import pandas as pd 
-from sec_cik_mapper import StockMapper
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-import logging 
-from scipy.optimize import minimize
+import pandas as pd
 import numpy as np
+import logging
+import hashlib
+import time
+import pickle
+import os
+import random
 from datetime import datetime, timedelta
-from pybacktestchain.data_module import DataModule, Information, FirstTwoMoments
+from dataclasses import dataclass, field
+from scipy.optimize import minimize
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 
-#---------------------------------------------------------
-# Functions
-#---------------------------------------------------------
+# --------------------------------------------------------------------------------
+# Functions to retrieve commodity futures data with expiry dates
+# --------------------------------------------------------------------------------
 
 def get_futures_expiry(buy_date, ticker):
     """
@@ -23,7 +25,7 @@ def get_futures_expiry(buy_date, ticker):
 
     Args:
         buy_date (str): The purchase date in 'YYYY-MM-DD' format.
-        ticker (str): The commodity ticker (e.g., 'CL=F', 'BZ=F', 'NG=F', 'HO=F', 'ZS=F', 'ZW=F', 'ZC=F', 'CC=F).
+        ticker (str): The commodity ticker (e.g., 'CL=F', 'BZ=F', 'NG=F', 'HO=F', 'ZS=F', 'ZW=F', 'ZC=F', 'CC=F').
 
     Returns:
         str: Expiry date of the front-month contract in 'YYYY-MM-DD' format.
@@ -38,7 +40,7 @@ def get_futures_expiry(buy_date, ticker):
     """
     # Define valid contract months for CBOT commodities
     cbot_contract_months = {
-        'ZS=F': [1, 3, 5, 7, 8, 9, 11],  # Soybean
+        'ZS=F': [1, 3, 5, 7, 8, 9, 11],  # Soybeans
         'ZW=F': [3, 5, 7, 9, 12],        # Wheat
         'ZC=F': [3, 5, 7, 9, 12],        # Corn
         'CC=F': [3, 5, 7, 9, 12],        # Cocoa
@@ -108,14 +110,18 @@ def get_futures_expiry(buy_date, ticker):
             if potential_expiry < buy_date:
                 delivery_month = (delivery_month % 12) + 1
                 year += (1 if delivery_month == 1 else 0)
+
                 if ticker == 'CL=F':
                     expiry_year = year if delivery_month > 1 else year - 1
                     expiry_month = delivery_month - 1 if delivery_month > 1 else 12
                     potential_expiry = pd.Timestamp(expiry_year, expiry_month, 25) - pd.tseries.offsets.BDay(3)
+
                 elif ticker == 'BZ=F':
                     potential_expiry = pd.Timestamp(year, delivery_month, 1) - pd.tseries.offsets.BDay(2)
+
                 elif ticker == 'NG=F':
                     potential_expiry = pd.Timestamp(year, delivery_month, 1) - pd.tseries.offsets.BDay(3)
+
                 elif ticker == 'HO=F':
                     expiry_year = year if delivery_month > 1 else year - 1
                     expiry_month = delivery_month - 1 if delivery_month > 1 else 12
@@ -124,14 +130,14 @@ def get_futures_expiry(buy_date, ticker):
             expiry_date = potential_expiry
 
         else:
-            raise ValueError(f"Unsupported ticker: {ticker}. Supported tickers are: CL=F, BZ=F, NG=F, HO=F, ZS=F, ZW=F, ZC=F.")
+            raise ValueError(f"Unsupported ticker: {ticker}. Supported tickers are: CL=F, BZ=F, NG=F, HO=F, ZS=F, ZW=F, ZC=F, CC=F.")
 
         # Return expiry date
         return expiry_date.strftime('%Y-%m-%d')
 
     except Exception as e:
         return f"Error calculating expiry date: {e}"
-
+    
 # Example usage
 #buy_date = "2024-12-29" 
 #ticker = "ZC=F"
@@ -139,7 +145,6 @@ def get_futures_expiry(buy_date, ticker):
 #print(f"The expiry date for the {ticker} futures contract purchased on {buy_date} is {expiry_date}.")
 
 
-# Function to retrieve historical data for a single commodity
 def get_commodity_data(ticker, start_date, end_date):
     """
     Retrieves historical data on prices for a given commodity.
@@ -150,7 +155,7 @@ def get_commodity_data(ticker, start_date, end_date):
         end_date (str): End date in the format 'YYYY-MM-DD'
 
     Returns:
-        pd.DataFrame: A pandas dataframe with the historical data
+        pd.DataFrame: A pandas dataframe with the historical data, including a 'futures expiry' column.
 
     Example:
         df = get_commodity_data('CL=F', '2020-01-01', '2020-12-31')
@@ -161,13 +166,18 @@ def get_commodity_data(ticker, start_date, end_date):
         df = pd.DataFrame(data)
         df['ticker'] = ticker
         df.reset_index(inplace=True)
-        df['futures expiry'] = df.apply(lambda row: get_futures_expiry(row['Date'].strftime('%Y-%m-%d'), row['ticker']), axis=1)
+
+        # We calculate the expiry date for each row based on the 'Date' column
+        # For demonstration, assume we treat each 'Date' as the 'buy date'
+        df['futures expiry'] = df.apply(
+            lambda row: get_futures_expiry(row['Date'].strftime('%Y-%m-%d'), row['ticker']), axis=1
+        )
         return df
     except Exception as e:
         logging.warning(f"Error retrieving data for {ticker}: {e}")
         return pd.DataFrame()
 
-# Function to retrieve historical data for multiple commodities
+
 def get_commodities_data(tickers, start_date, end_date):
     """
     Retrieves historical data on prices for a list of commodities.
@@ -192,8 +202,33 @@ def get_commodities_data(tickers, start_date, end_date):
         except Exception as e:
             logging.warning(f"Commodity {ticker} not found: {e}")
     # Concatenate all dataframes
-    data = pd.concat(dfs, ignore_index=True)
+    if dfs:
+        data = pd.concat(dfs, ignore_index=True)
+    else:
+        data = pd.DataFrame()
     return data
+
+# --------------------------------------------------------------------------------
+# 2. Utilities for random naming (kept from original for demonstration)
+# --------------------------------------------------------------------------------
+animals = [
+    "Eagle", "Tiger", "Lion", "Wolf", "Bear", "Falcon", "Shark", "Panther", "Leopard", "Cheetah",
+    "Hawk", "Fox", "Owl", "Cobra", "Jaguar", "Horse", "Elephant", "Dolphin", "Gorilla", "Lynx"
+]
+professions = [
+    "Carpenter", "Engineer", "Doctor", "Pilot", "Farmer", "Artist", "Blacksmith", "Chef", "Teacher", "Mechanic",
+    "Architect", "Scientist", "Soldier", "Nurse", "Firefighter", "Plumber", "Astronaut", "Tailor", "Photographer", "Lawyer"
+]
+colors = [
+    "Red", "Blue", "Green", "Yellow", "Black", "White", "Purple", "Orange", "Brown", "Grey",
+    "Pink", "Violet", "Crimson", "Turquoise", "Gold", "Silver", "Amber", "Magenta", "Teal", "Indigo"
+]
+
+def generate_random_name():
+    animal = random.choice(animals)
+    profession = random.choice(professions)
+    color = random.choice(colors)
+    return f"{color}{animal}{profession}"
 
 #---------------------------------------------------------
 # Example Usage
@@ -227,112 +262,105 @@ def get_commodities_data(tickers, start_date, end_date):
 #---------------------------------------------------------
 
 # Class that represents the data used in the backtest. 
+
 @dataclass
 class CommoditiesDataModule:
     data: pd.DataFrame
 
 @dataclass
 class CommoditiesInformation:
-    s: timedelta = timedelta(days=360) # Time step (rolling window)
-    data_module: DataModule = None # Data module
+    s: timedelta = timedelta(days=360)  # Rolling window size
+    data_module: CommoditiesDataModule = None
     time_column: str = 'Date'
-    commodity_column: str = 'ticker'
+    company_column: str = 'ticker'
     adj_close_column: str = 'Close'
+    expiry_column: str = 'futures expiry'  # NEW: store expiry column name
 
-    def slice_data(self, t : datetime):
-
-        # Get the data module 
+    def slice_data(self, t: datetime):
+        """
+        Slices the data up to time t (t - s to t).
+        """
         data = self.data_module.data
-        # Get the time step 
         s = self.s
 
-        # Convert both `t` and the data column to timezone-aware, if needed
-        if t.tzinfo is not None:
-            # If `t` is timezone-aware, make sure data is also timezone-aware
-            data[self.time_column] = pd.to_datetime(data[self.time_column]).dt.tz_localize(t.tzinfo.zone, ambiguous='NaT', nonexistent='NaT')
-        else:
-            # If `t` is timezone-naive, ensure the data is timezone-naive as well
-            data[self.time_column] = pd.to_datetime(data[self.time_column]).dt.tz_localize(None)
-        
-        # Get the data only between t-s and t
-        data = data[(data[self.time_column] >= t - s) & (data[self.time_column] < t)]
-        return data
+        # Ensure time columns are datetime64[ns], naive
+        data[self.time_column] = pd.to_datetime(data[self.time_column]).dt.tz_localize(None)
 
-    def get_prices(self, t : datetime):
-        # gets the prices at which the portfolio will be rebalanced at time t 
+        # We only want data from t-s to t (exclusive of t)
+        data_slice = data[(data[self.time_column] >= t - s) & (data[self.time_column] < t)]
+        return data_slice
+
+    def get_prices(self, t: datetime):
+        """
+        Gets the last available price for each commodity before time t.
+        """
         data = self.slice_data(t)
-        
-        # get the last price for each company
-        prices = data.groupby(self.commodity_column)[self.adj_close_column].last()
-        # to dict, ticker as key price as value 
+        prices = data.groupby(self.company_column)[self.adj_close_column].last()
         prices = prices.to_dict()
         return prices
-    
 
 @dataclass
-class FirstTwoMoments(Information):
-    def compute_portfolio(self, t:datetime, information_set):
+class CommoditiesFirstTwoMoments(CommoditiesInformation):
+    def compute_information(self, t: datetime):
+        """
+        Compute expected return and covariance from the sliced data.
+        """
+        data = self.slice_data(t)
+        information_set = {}
+
+        # Sort data
+        data = data.sort_values(by=[self.company_column, self.time_column])
+        # Compute daily returns
+        data['return'] = data.groupby(self.company_column)[self.adj_close_column].pct_change()
+
+        # Expected return (mean of returns)
+        information_set['expected_return'] = data.groupby(self.company_column)['return'].mean().fillna(0).to_numpy()
+
+        # Pivot to compute covariance
+        pivot_data = data.pivot(index=self.time_column, columns=self.company_column, values=self.adj_close_column).dropna(axis=0)
+        # Covariance matrix
+        covariance_matrix = pivot_data.cov().to_numpy()
+
+        # Prepare info
+        information_set['covariance_matrix'] = covariance_matrix
+        information_set['companies'] = pivot_data.columns.to_numpy()
+        return information_set
+
+    def compute_portfolio(self, t: datetime, information_set):
+        """
+        Mean-variance optimization subject to no short-selling (weights >= 0) and sum of weights = 1.
+        """
         try:
             mu = information_set['expected_return']
             Sigma = information_set['covariance_matrix']
-            gamma = 1 # risk aversion parameter
+            gamma = 1.0  # risk aversion
             n = len(mu)
-            # objective function
-            obj = lambda x: -x.dot(mu) + gamma/2 * x.dot(Sigma).dot(x)
-            # constraints
-            cons = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
-            # bounds, allow short selling, +- inf 
+
+            # Objective: minimize -mu^T w + gamma/2 w^T Sigma w
+            def obj(weights):
+                return -weights.dot(mu) + gamma / 2.0 * weights.dot(Sigma).dot(weights)
+
+            # Constraint: sum of weights = 1
+            cons = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}
+            # Bounds: no short selling
             bounds = [(0.0, 1.0)] * n
-            # initial guess, equal weights
             x0 = np.ones(n) / n
-            # minimize
-            res = minimize(obj, x0, constraints=cons, bounds=bounds)
 
-            # prepare dictionary 
-            portfolio = {k: None for k in information_set['commodities']}
+            res = minimize(obj, x0, bounds=bounds, constraints=cons)
+            portfolio = {k: None for k in information_set['companies']}
 
-            # if converged update
             if res.success:
-                for i, company in enumerate(information_set['commodities']):
-                    portfolio[company] = res.x[i]
+                for i, c in enumerate(information_set['companies']):
+                    portfolio[c] = res.x[i]
             else:
                 raise Exception("Optimization did not converge")
 
             return portfolio
         except Exception as e:
-            # if something goes wrong return an equal weight portfolio but let the user know 
-            logging.warning("Error computing portfolio, returning equal weight portfolio")
+            logging.warning("Error computing portfolio, returning equal weight portfolio.")
             logging.warning(e)
-            return {k: 1/len(information_set['commodities']) for k in information_set['commodities']}
-
-    def compute_information(self, t : datetime):
-        # Get the data module 
-        data = self.slice_data(t)
-        # the information set will be a dictionary with the data
-        information_set = {}
-
-        # sort data by ticker and date
-        data = data.sort_values(by=[self.company_column, self.time_column])
-
-        # expected return per company
-        data['return'] =  data.groupby(self.company_column)[self.adj_close_column].pct_change() #.mean()
-        
-        # expected return by company 
-        information_set['expected_return'] = data.groupby(self.company_column)['return'].mean().to_numpy()
-
-        # covariance matrix
-
-        # 1. pivot the data
-        data = data.pivot(index=self.time_column, columns=self.company_column, values=self.adj_close_column)
-        # drop missing values
-        data = data.dropna(axis=0)
-        # 2. compute the covariance matrix
-        covariance_matrix = data.cov()
-        # convert to numpy matrix 
-        covariance_matrix = covariance_matrix.to_numpy()
-        # add to the information set
-        information_set['covariance_matrix'] = covariance_matrix
-        information_set['commodities'] = data.columns.to_numpy()
-        return information_set
-
-
+            # Equal weight fallback
+            companies = information_set.get('companies', [])
+            if len(companies) == 0:
+                return {}
+            return {k: 1.0 / len(companies) for k in companies}

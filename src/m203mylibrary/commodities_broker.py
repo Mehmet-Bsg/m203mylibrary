@@ -1,91 +1,163 @@
-from pybacktestchain.broker import Backtest  # Import the existing class
-from pybacktestchain.utils import generate_random_name
-from pybacktestchain.blockchain import Block, Blockchain
-
-from commodities_module import get_commodities_data 
-
+import yfinance as yf
+import pandas as pd
+import numpy as np
 import logging
+import hashlib
+import time
+import pickle
+import os
+import random
+from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from scipy.optimize import minimize
 
-class MultiAssetBacktest(Backtest):
-    def __init__(self, initial_date, final_date, asset_type='stocks', **kwargs):
+from commodities_blockchain import Blockchain
+
+@dataclass
+class CommodityPosition:
+    ticker: str
+    quantity: int
+    entry_price: float
+    expiry_date: str = None  # Store the expiry date for the position
+
+@dataclass
+class CommodityBroker:
+    cash: float
+    positions: dict = None
+    transaction_log: pd.DataFrame = None
+    entry_prices: dict = None
+    verbose: bool = True
+
+    def initialize_blockchain(self, name: str):
+        if not os.path.exists('blockchain'):
+            os.makedirs('blockchain')
+        chains = os.listdir('blockchain')
+        ending = f'{name}.pkl'
+        if ending in chains:
+            if self.verbose:
+                logging.warning(f"Blockchain with name {name} already exists. Loading it from disk.")
+            with open(f'blockchain/{name}.pkl', 'rb') as f:
+                self.blockchain = pickle.load(f)
+            return
+
+        self.blockchain = Blockchain(name)
+        self.blockchain.store()
+        if self.verbose:
+            logging.info(f"Blockchain with name {name} initialized and stored.")
+
+    def __post_init__(self):
+        if self.positions is None:
+            self.positions = {}
+        if self.transaction_log is None:
+            self.transaction_log = pd.DataFrame(columns=['Date', 'Action', 'Ticker', 'Quantity', 'Price', 'Cash'])
+        if self.entry_prices is None:
+            self.entry_prices = {}
+
+    def buy(self, ticker: str, quantity: int, price: float, date: datetime, expiry_date: str = None):
+        total_cost = price * quantity
+        if self.cash >= total_cost:
+            self.cash -= total_cost
+            if ticker in self.positions:
+                position = self.positions[ticker]
+                new_quantity = position.quantity + quantity
+                new_entry_price = ((position.entry_price * position.quantity) + (price * quantity)) / new_quantity
+                position.quantity = new_quantity
+                position.entry_price = new_entry_price
+                # Update expiry
+                if expiry_date:
+                    position.expiry_date = expiry_date
+            else:
+                self.positions[ticker] = CommodityPosition(ticker, quantity, price, expiry_date=expiry_date)
+            self.log_transaction(date, 'BUY', ticker, quantity, price)
+            self.entry_prices[ticker] = price
+        else:
+            if self.verbose:
+                logging.warning(f"Not enough cash to buy {quantity} shares of {ticker} at {price}. Available cash: {self.cash}")
+
+    def sell(self, ticker: str, quantity: int, price: float, date: datetime):
+        if ticker in self.positions and self.positions[ticker].quantity >= quantity:
+            position = self.positions[ticker]
+            position.quantity -= quantity
+            self.cash += price * quantity
+
+            if position.quantity == 0:
+                del self.positions[ticker]
+                if ticker in self.entry_prices:
+                    del self.entry_prices[ticker]
+            self.log_transaction(date, 'SELL', ticker, quantity, price)
+        else:
+            if self.verbose:
+                logging.warning(f"Not enough shares to sell {quantity} shares of {ticker}.")
+
+    def log_transaction(self, date, action, ticker, quantity, price):
+        transaction = pd.DataFrame([{
+            'Date': date,
+            'Action': action,
+            'Ticker': ticker,
+            'Quantity': quantity,
+            'Price': price,
+            'Cash': self.cash
+        }])
+        self.transaction_log = pd.concat([self.transaction_log, transaction], ignore_index=True)
+
+    def get_cash_balance(self):
+        return self.cash
+
+    def get_portfolio_value(self, market_prices: dict):
+        portfolio_value = self.cash
+        for tkr, pos in self.positions.items():
+            if tkr in market_prices and market_prices[tkr] is not None:
+                portfolio_value += pos.quantity * market_prices[tkr]
+        return portfolio_value
+
+    def execute_portfolio(self, portfolio: dict, prices: dict, date: datetime):
         """
-        Initialize the backtest for stocks or commodities.
-
-        Args:
-            initial_date (datetime): Start date of the backtest.
-            final_date (datetime): End date of the backtest.
-            asset_type (str): Type of assets to backtest ('stocks' or 'commodities').
-            **kwargs: Additional arguments passed to the parent class.
+        Rebalance the portfolio to match the target weights in `portfolio`,
+        selling first, then buying.
         """
-        super().__init__(initial_date, final_date, **kwargs)
-        self.asset_type = asset_type.lower()  # Normalize to lowercase
-        if self.asset_type not in ['stocks', 'commodities']:
-            raise ValueError("`asset_type` must be 'stocks' or 'commodities'.")
+        # First, handle sells
+        for tkr, weight in portfolio.items():
+            price = prices.get(tkr)
+            if price is None:
+                if self.verbose:
+                    logging.warning(f"Price for {tkr} not available on {date}")
+                continue
 
-    def run_backtest(self):
-        """
-        Execute the backtest based on the selected asset type.
-        """
-        if self.asset_type == 'stocks':
-            self.run_stock_backtest()
-        elif self.asset_type == 'commodities':
-            self.run_commodities_backtest()
+            total_value = self.get_portfolio_value(prices)
+            target_value = total_value * weight
+            current_value = self.positions.get(tkr, CommodityPosition(tkr, 0, 0.0)).quantity * price
+            diff_value = target_value - current_value
+            quantity_to_trade = int(diff_value / price)
 
-    def run_stock_backtest(self):
-        """
-        Execute the backtest for a stock portfolio.
-        """
-        logging.info("Running stock backtest...")
-        super().run_backtest()  # Call the logic already implemented for stocks
+            if quantity_to_trade < 0:
+                self.sell(tkr, abs(quantity_to_trade), price, date)
 
-    def run_commodities_backtest(self):
-        """
-        Execute the backtest for a commodities portfolio.
-        """
-        logging.info(f"Running commodities backtest from {self.initial_date} to {self.final_date}.")
-        logging.info(f"Retrieving price data for commodities universe")
-        self.risk_model = self.risk_model(threshold=0.1)
-        # self.initial_date to yyyy-mm-dd format
-        init_ = self.initial_date.strftime('%Y-%m-%d')
-        # self.final_date to yyyy-mm-dd format
-        final_ = self.final_date.strftime('%Y-%m-%d')
-        df = get_commodities_data (self.universe, init_, final_)
+        # Next, handle buys
+        for tkr, weight in portfolio.items():
+            price = prices.get(tkr)
+            if price is None:
+                continue
 
-        # Initialize the DataModule
-        data_module = DataModule(df)
+            total_value = self.get_portfolio_value(prices)
+            target_value = total_value * weight
+            current_value = self.positions.get(tkr, CommodityPosition(tkr, 0, 0.0)).quantity * price
+            diff_value = target_value - current_value
+            quantity_to_trade = int(diff_value / price)
 
-        # Create the Information object
-        info = self.information_class(s = self.s, 
-                                    data_module = data_module,
-                                    time_column=self.time_column,
-                                    company_column=self.company_column,
-                                    adj_close_column=self.adj_close_column)
-        
-        # Run the backtest
-        for t in pd.date_range(start=self.initial_date, end=self.final_date, freq='D'):
-            
-            if self.risk_model is not None:
-                portfolio = info.compute_portfolio(t, info.compute_information(t))
-                prices = info.get_prices(t)
-                self.risk_model.trigger_stop_loss(t, portfolio, prices, self.broker)
-           
-            if self.rebalance_flag().time_to_rebalance(t):
-                logging.info("-----------------------------------")
-                logging.info(f"Rebalancing portfolio at {t}")
-                information_set = info.compute_information(t)
-                portfolio = info.compute_portfolio(t, information_set)
-                prices = info.get_prices(t)
-                self.broker.execute_portfolio(portfolio, prices, t)
+            if quantity_to_trade > 0:
+                available_cash = self.get_cash_balance()
+                cost = quantity_to_trade * price
+                if cost <= available_cash:
+                    
+                    expiry_date = None
 
-        logging.info(f"Backtest completed. Final portfolio value: {self.broker.get_portfolio_value(info.get_prices(self.final_date))}")
-        df = self.broker.get_transaction_log()
+                    self.buy(tkr, quantity_to_trade, price, date, expiry_date=expiry_date)
+                else:
+                    # partial buy
+                    if self.verbose:
+                        logging.warning(f"Not enough cash to buy {quantity_to_trade} of {tkr}. Buying partial.")
+                    quantity_to_trade = int(available_cash / price)
+                    self.buy(tkr, quantity_to_trade, price, date)
 
-        # create backtests folder if it does not exist
-        if not os.path.exists('backtests'):
-            os.makedirs('backtests')
-
-        # save to csv, use the backtest name 
-        df.to_csv(f"backtests/{self.backtest_name}.csv")
-
-        # store the backtest in the blockchain
-        self.broker.blockchain.add_block(self.backtest_name, df.to_string())
+    def get_transaction_log(self):
+        return self.transaction_log
