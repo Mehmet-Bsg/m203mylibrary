@@ -2,8 +2,9 @@ from pybacktestchain.broker import Backtest  # Import the existing class
 from pybacktestchain.utils import generate_random_name
 from pybacktestchain.blockchain import Block, Blockchain
 
-from commodities_module import get_commodities_data 
-
+from commodities_module import CommoditiesDataModule, CommoditiesInformation, get_commodities_data
+import pandas as pd
+import os
 import logging
 
 class MultiAssetBacktest(Backtest):
@@ -43,7 +44,7 @@ class MultiAssetBacktest(Backtest):
         Execute the backtest for a commodities portfolio.
         """
         logging.info(f"Running commodities backtest from {self.initial_date} to {self.final_date}.")
-        logging.info(f"Retrieving price data for commodities universe")
+        logging.info(f"Retrieving price data and contracts expiry for commodities futures universe")
         self.risk_model = self.risk_model(threshold=0.1)
         # self.initial_date to yyyy-mm-dd format
         init_ = self.initial_date.strftime('%Y-%m-%d')
@@ -52,13 +53,13 @@ class MultiAssetBacktest(Backtest):
         df = get_commodities_data (self.universe, init_, final_)
 
         # Initialize the DataModule
-        data_module = DataModule(df)
+        commodities_data_module = CommoditiesDataModule(df)
 
         # Create the Information object
-        info = self.information_class(s = self.s, 
-                                    data_module = data_module,
+        info = CommoditiesInformation(s = self.s, 
+                                    data_module = commodities_data_module,
                                     time_column=self.time_column,
-                                    company_column=self.company_column,
+                                    commodity_column=self.commodity_column,
                                     adj_close_column=self.adj_close_column)
         
         # Run the backtest
@@ -69,12 +70,12 @@ class MultiAssetBacktest(Backtest):
                 prices = info.get_prices(t)
                 self.risk_model.trigger_stop_loss(t, portfolio, prices, self.broker)
            
-            if self.rebalance_flag().time_to_rebalance(t):
+            if self.rebalance_flag().time_to_rebalance(t) or self.has_expired_contracts(commodities_data_module, t):
                 logging.info("-----------------------------------")
                 logging.info(f"Rebalancing portfolio at {t}")
                 information_set = info.compute_information(t)
                 portfolio = info.compute_portfolio(t, information_set)
-                prices = info.get_prices(t)
+                self.broker.sell_expired_contracts(t, prices)  # Sell expired contracts
                 self.broker.execute_portfolio(portfolio, prices, t)
 
         logging.info(f"Backtest completed. Final portfolio value: {self.broker.get_portfolio_value(info.get_prices(self.final_date))}")
