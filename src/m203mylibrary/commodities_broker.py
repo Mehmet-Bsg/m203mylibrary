@@ -60,10 +60,14 @@ class CommodityBroker:
             if ticker in self.positions:
                 position = self.positions[ticker]
                 new_quantity = position.quantity + quantity
-                new_entry_price = ((position.entry_price * position.quantity) + (price * quantity)) / new_quantity
-                position.quantity = new_quantity
-                position.entry_price = new_entry_price
-                # Update expiry
+                if new_quantity > 0:  # To avoid a division by 0
+                    new_entry_price = ((position.entry_price * position.quantity) + (price * quantity)) / new_quantity
+                    position.quantity = new_quantity
+                    position.entry_price = new_entry_price
+                else:
+                    # If new_quantity is null, don't update entry
+                    logging.warning(f"Invalid trade for {ticker}: resulting quantity is zero.")
+                # Update expiry if needed
                 if expiry_date:
                     position.expiry_date = expiry_date
             else:
