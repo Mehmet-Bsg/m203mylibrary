@@ -1,4 +1,3 @@
-#%%
 import yfinance as yf
 import pandas as pd 
 from sec_cik_mapper import StockMapper
@@ -8,7 +7,7 @@ import logging
 from scipy.optimize import minimize
 import numpy as np
 from datetime import datetime, timedelta
-from pybacktestchain.data_module import DataModule, Information, FirstTwoMoments
+from pybacktestchain.data_module import DataModule, Information
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -223,7 +222,7 @@ def get_commodities_data(tickers, start_date, end_date):
 # GC=F --> Gold, SI=F --> Silver, HG = F --> Copper 
 
 #---------------------------------------------------------
-# Extended Classes for Commodities Futures
+# Extended Data Classes for Commodities Futures
 #---------------------------------------------------------
 
 # Class that represents the data used in the backtest. 
