@@ -1,91 +1,59 @@
-from pybacktestchain.broker import Backtest  # Import the existing class
-from pybacktestchain.utils import generate_random_name
-from pybacktestchain.blockchain import Block, Blockchain
-
-from commodities_module import get_commodities_data 
-
+import yfinance as yf
+import pandas as pd
+import numpy as np
 import logging
+import hashlib
+import time
+import pickle
+import os
+import random
+from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from scipy.optimize import minimize
 
-class MultiAssetBacktest(Backtest):
-    def __init__(self, initial_date, final_date, asset_type='stocks', **kwargs):
-        """
-        Initialize the backtest for stocks or commodities.
+from pybacktestchain.broker import Position, Broker
 
-        Args:
-            initial_date (datetime): Start date of the backtest.
-            final_date (datetime): End date of the backtest.
-            asset_type (str): Type of assets to backtest ('stocks' or 'commodities').
-            **kwargs: Additional arguments passed to the parent class.
-        """
-        super().__init__(initial_date, final_date, **kwargs)
-        self.asset_type = asset_type.lower()  # Normalize to lowercase
-        if self.asset_type not in ['stocks', 'commodities']:
-            raise ValueError("`asset_type` must be 'stocks' or 'commodities'.")
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    def run_backtest(self):
-        """
-        Execute the backtest based on the selected asset type.
-        """
-        if self.asset_type == 'stocks':
-            self.run_stock_backtest()
-        elif self.asset_type == 'commodities':
-            self.run_commodities_backtest()
+# --------------------------------------------------------------------------------
+# New Broker and execution logic
+# --------------------------------------------------------------------------------
 
-    def run_stock_backtest(self):
-        """
-        Execute the backtest for a stock portfolio.
-        """
-        logging.info("Running stock backtest...")
-        super().run_backtest()  # Call the logic already implemented for stocks
+@dataclass
+class CommodityPosition(Position):
+    """
+    Extends Position with an expiry_date field for futures.
+    """
+    expiry_date: str = None
 
-    def run_commodities_backtest(self):
-        """
-        Execute the backtest for a commodities portfolio.
-        """
-        logging.info(f"Running commodities backtest from {self.initial_date} to {self.final_date}.")
-        logging.info(f"Retrieving price data for commodities universe")
-        self.risk_model = self.risk_model(threshold=0.1)
-        # self.initial_date to yyyy-mm-dd format
-        init_ = self.initial_date.strftime('%Y-%m-%d')
-        # self.final_date to yyyy-mm-dd format
-        final_ = self.final_date.strftime('%Y-%m-%d')
-        df = get_commodities_data (self.universe, init_, final_)
-
-        # Initialize the DataModule
-        data_module = DataModule(df)
-
-        # Create the Information object
-        info = self.information_class(s = self.s, 
-                                    data_module = data_module,
-                                    time_column=self.time_column,
-                                    company_column=self.company_column,
-                                    adj_close_column=self.adj_close_column)
-        
-        # Run the backtest
-        for t in pd.date_range(start=self.initial_date, end=self.final_date, freq='D'):
-            
-            if self.risk_model is not None:
-                portfolio = info.compute_portfolio(t, info.compute_information(t))
-                prices = info.get_prices(t)
-                self.risk_model.trigger_stop_loss(t, portfolio, prices, self.broker)
-           
-            if self.rebalance_flag().time_to_rebalance(t):
-                logging.info("-----------------------------------")
-                logging.info(f"Rebalancing portfolio at {t}")
-                information_set = info.compute_information(t)
-                portfolio = info.compute_portfolio(t, information_set)
-                prices = info.get_prices(t)
-                self.broker.execute_portfolio(portfolio, prices, t)
-
-        logging.info(f"Backtest completed. Final portfolio value: {self.broker.get_portfolio_value(info.get_prices(self.final_date))}")
-        df = self.broker.get_transaction_log()
-
-        # create backtests folder if it does not exist
-        if not os.path.exists('backtests'):
-            os.makedirs('backtests')
-
-        # save to csv, use the backtest name 
-        df.to_csv(f"backtests/{self.backtest_name}.csv")
-
-        # store the backtest in the blockchain
-        self.broker.blockchain.add_block(self.backtest_name, df.to_string())
+@dataclass
+class CommodityBroker(Broker):
+    """
+    Inherits from the Broker class
+    We store an expiry_date in our CommodityPosition.
+    """
+    def buy(self, ticker: str, quantity: int, price: float, date: datetime, expiry_date: str = None):
+        total_cost = price * quantity
+        if self.cash >= total_cost:
+            self.cash -= total_cost
+            if ticker in self.positions:
+                position = self.positions[ticker]
+                new_quantity = position.quantity + quantity
+                if new_quantity > 0:  # To avoid a division by 0
+                    new_entry_price = ((position.entry_price * position.quantity) + (price * quantity)) / new_quantity
+                    position.quantity = new_quantity
+                    position.entry_price = new_entry_price
+                else:
+                    # If new_quantity is null, don't update entry
+                    logging.warning(f"Invalid trade for {ticker}: resulting quantity is zero.")
+                # Update expiry if needed
+                if expiry_date:
+                    position.expiry_date = expiry_date
+            else:
+                self.positions[ticker] = CommodityPosition(ticker, quantity, price, expiry_date=expiry_date)
+            self.log_transaction(date, 'BUY', ticker, quantity, price)
+            self.entry_prices[ticker] = price
+        else:
+            if self.verbose:
+                logging.warning(f"Not enough cash to buy {quantity} shares of {ticker} at {price}. Available cash: {self.cash}")
