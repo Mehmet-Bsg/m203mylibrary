@@ -99,7 +99,7 @@ class CommodityStopLoss(CommodityRiskModel):
 class CommodityBacktest:
     initial_date: datetime
     final_date: datetime
-    universe: list = ['CL=F', 'BZ=F', 'NG=F', 'HO=F', 'ZS=F', 'ZW=F', 'ZC=F', 'CC=F']  # list of commodity tickers
+    universe: list = field(default_factory=lambda: ['CL=F', 'BZ=F', 'NG=F', 'HO=F', 'ZS=F', 'ZW=F', 'ZC=F', 'CC=F'])  # list of commodity tickers
     information_class: type = CommoditiesFirstTwoMoments
     s: timedelta = timedelta(days=360)
     time_column: str = 'Date'
