@@ -12,26 +12,14 @@ from dataclasses import dataclass, field
 from scipy.optimize import minimize
 
 from pybacktestchain.broker import RebalanceFlag, EndOfMonth, StopLoss
-from pybacktestchain.blockchain import RebalanceFlag, EndOfMonth, StopLoss
+from pybacktestchain.utils import generate_random_name
 
 from commodities_broker import CommodityBroker
-from commodities__module import CommoditiesFirstTwoMoments, get_commodities_data, CommoditiesDataModule
+from commodities_data_module import CommoditiesFirstTwoMoments, get_commodities_data, CommoditiesDataModule
 
 # --------------------------------------------------------------------------------
 # Rebalance flags (we want end-of-month and contract expiry triggers)
 # --------------------------------------------------------------------------------
-
-@dataclass
-class ExpiryCheck(RebalanceFlag):
-    expiry_column: str = 'futures expiry'
-    def time_to_rebalance(self, t: datetime, data_slice: pd.DataFrame) -> bool:
-        """
-        True if any contract in data_slice expires on date t.
-        """
-        if data_slice.empty:
-            return False
-        t_str = t.strftime('%Y-%m-%d')
-        return (data_slice[self.expiry_column] == t_str).any()
 
 @dataclass
 class EndOfMonthOrExpiry(RebalanceFlag):
@@ -40,17 +28,18 @@ class EndOfMonthOrExpiry(RebalanceFlag):
     """
     expiry_column: str = 'futures expiry'
 
-    def time_to_rebalance(self, t: datetime, data_slice: pd.DataFrame) -> bool:
+    def new_time_to_rebalance(self, t: datetime, data_slice: pd.DataFrame) -> bool:
         # Check end of month
-        eom = EndOfMonth().time_to_rebalance(t, data_slice)
+        eom = EndOfMonth().time_to_rebalance(t)
         # Check expiry
         t_str = t.strftime('%Y-%m-%d')
         expiring = False
         if not data_slice.empty and self.expiry_column in data_slice.columns:
             expiring = (data_slice[self.expiry_column] == t_str).any()
-
+            if not data_slice[data_slice[self.expiry_column] == t_str].empty :
+                # Print detailed information about expiring contracts
+                print(f"Contracts expiring on {t_str}:")
         return eom or expiring
-
 # --------------------------------------------------------------------------------
 # Risk model for stop loss
 # --------------------------------------------------------------------------------
