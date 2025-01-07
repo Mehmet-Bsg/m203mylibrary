@@ -15,9 +15,13 @@ from scipy.optimize import minimize
 from pybacktestchain.broker import Backtest, EndOfMonth, StopLoss, Broker
 from pybacktestchain.utils import generate_random_name
 from pybacktestchain.blockchain import Block, Blockchain
+from pybacktestchain.data_module import FirstTwoMoments
 
 from commodities_backtest import CommodityBacktest, EndOfMonthOrExpiry, CommodityStopLoss
 from commodities_broker import CommodityBroker
+from commodities_data_module import CommoditiesFirstTwoMoments
+
+from commodities_backtest import CommodityBacktest
 
 # --------------------------------------------------------------------------------
 # The universal backtest class
@@ -28,7 +32,8 @@ from commodities_broker import CommodityBroker
 class_defaults = {
     "stocks": {
         "backtest_class": Backtest,
-        "universe": Backtest.universe,
+        "universe": ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'INTC', 'CSCO', 'NFLX'],
+        "information_class" : FirstTwoMoments,
         "adj_close_column": "Adj Close",
         "rebalance_flag": EndOfMonth,
         "risk_model": StopLoss,
@@ -36,7 +41,8 @@ class_defaults = {
     },
     "commodities": {
         "backtest_class": CommodityBacktest,
-        "universe": CommodityBacktest.universe,
+        "universe": ['CL=F', 'BZ=F', 'NG=F', 'HO=F', 'ZS=F', 'ZW=F', 'ZC=F', 'CC=F'],
+        "information_class" : CommoditiesFirstTwoMoments,
         "adj_close_column": "Close",
         "rebalance_flag": EndOfMonthOrExpiry,
         "risk_model": CommodityStopLoss,
@@ -58,6 +64,7 @@ class UniversalBacktest:
     rebalance_flag: type = None
     risk_model: type = None
     adj_close_column: str = None
+    information_class: str = None
     expiry_column: str = None  # Specific to commodities
 
     def _get_default_attributes(self):
@@ -77,6 +84,7 @@ class UniversalBacktest:
         adj_close_column = self.adj_close_column or defaults["adj_close_column"]
         rebalance_flag = self.rebalance_flag or defaults["rebalance_flag"]
         risk_model = self.risk_model or defaults["risk_model"]
+        information_class = self.information_class or defaults["information_class"]
 
         # Include expiry_column only for commodities
         extra_attributes = {}
@@ -90,15 +98,16 @@ class UniversalBacktest:
             final_date=self.final_date,
             initial_cash=self.initial_cash,
             verbose=self.verbose,
-            universe=universe,
+            information_class = information_class,
             adj_close_column=adj_close_column,
             rebalance_flag=rebalance_flag,
             risk_model=risk_model,
             **extra_attributes,
         )
-
+        backtest_instance.universe = universe
         # Run the backtest
         result_log = backtest_instance.run_backtest()
+
         return result_log
 
 
