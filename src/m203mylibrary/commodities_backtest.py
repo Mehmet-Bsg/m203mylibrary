@@ -14,8 +14,8 @@ from scipy.optimize import minimize
 from pybacktestchain.broker import RebalanceFlag, EndOfMonth, StopLoss
 from pybacktestchain.utils import generate_random_name
 
-from commodities_broker import CommodityBroker
-from commodities_data_module import CommoditiesFirstTwoMoments, get_commodities_data, CommoditiesDataModule
+from .commodities_broker import CommodityBroker
+from .commodities_data_module import CommoditiesFirstTwoMoments, get_commodities_data, CommoditiesDataModule
 
 # --------------------------------------------------------------------------------
 # Rebalance flags (we want end-of-month and contract expiry triggers)

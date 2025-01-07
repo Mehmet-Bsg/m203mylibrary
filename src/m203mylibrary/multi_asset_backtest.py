@@ -17,11 +17,11 @@ from pybacktestchain.utils import generate_random_name
 from pybacktestchain.blockchain import Block, Blockchain
 from pybacktestchain.data_module import FirstTwoMoments
 
-from commodities_backtest import CommodityBacktest, EndOfMonthOrExpiry, CommodityStopLoss
-from commodities_broker import CommodityBroker
-from commodities_data_module import CommoditiesFirstTwoMoments
+from .commodities_backtest import CommodityBacktest, EndOfMonthOrExpiry, CommodityStopLoss
+from .commodities_broker import CommodityBroker
+from .commodities_data_module import CommoditiesFirstTwoMoments
 
-from commodities_backtest import CommodityBacktest
+from .commodities_backtest import CommodityBacktest
 
 # --------------------------------------------------------------------------------
 # The universal backtest class
