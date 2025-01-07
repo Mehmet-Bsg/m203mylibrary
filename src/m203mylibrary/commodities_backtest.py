@@ -40,6 +40,7 @@ class EndOfMonthOrExpiry(RebalanceFlag):
                 # Print detailed information about expiring contracts
                 print(f"Contracts expiring on {t_str}:")
         return eom or expiring
+
 # --------------------------------------------------------------------------------
 # Risk model for stop loss
 # --------------------------------------------------------------------------------
