@@ -142,7 +142,7 @@ class CommodityBacktest:
                         self.broker.sell(ticker, pos.quantity, prices[ticker], t)
 
             # Now, if it's a rebal day, re-compute the optimal portfolio
-            if rebal_flag.time_to_rebalance(t, data_slice):
+            if rebal_flag.new_time_to_rebalance(t, data_slice):
                 logging.info("-----------------------------------")
                 logging.info(f"Rebalancing portfolio at {t}")
                 information_set = info.compute_information(t)
