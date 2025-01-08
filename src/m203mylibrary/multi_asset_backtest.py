@@ -10,18 +10,18 @@ import random
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from scipy.optimize import minimize
-
+import matplotlib.pyplot as plt
 
 from pybacktestchain.broker import Backtest, EndOfMonth, StopLoss, Broker
 from pybacktestchain.utils import generate_random_name
 from pybacktestchain.blockchain import Block, Blockchain
 from pybacktestchain.data_module import FirstTwoMoments
 
-from commodities_backtest import CommodityBacktest, EndOfMonthOrExpiry, CommodityStopLoss
-from commodities_broker import CommodityBroker
-from commodities_data_module import CommoditiesFirstTwoMoments
+from .commodities_backtest import CommodityBacktest, EndOfMonthOrExpiry, CommodityStopLoss
+from .commodities_broker import CommodityBroker
+from .commodities_data_module import CommoditiesFirstTwoMoments
 
-from commodities_backtest import CommodityBacktest
+from .commodities_backtest import CommodityBacktest
 
 # --------------------------------------------------------------------------------
 # The universal backtest class
@@ -38,6 +38,7 @@ class_defaults = {
         "rebalance_flag": EndOfMonth,
         "risk_model": StopLoss,
         "broker_class": Broker,
+        "name_blockchain" : 'backtest'
     },
     "commodities": {
         "backtest_class": CommodityBacktest,
@@ -47,6 +48,7 @@ class_defaults = {
         "rebalance_flag": EndOfMonthOrExpiry,
         "risk_model": CommodityStopLoss,
         "broker_class": CommodityBroker,
+        "name_blockchain" : 'commodity_backtest',
         "expiry_column": "futures expiry",  # Specific to commodities
     },
 }
@@ -65,6 +67,7 @@ class UniversalBacktest:
     risk_model: type = None
     adj_close_column: str = None
     information_class: str = None
+    name_blockchain: str = None
     expiry_column: str = None  # Specific to commodities
 
     def _get_default_attributes(self):
@@ -74,6 +77,65 @@ class UniversalBacktest:
         if self.asset_class not in class_defaults:
             raise ValueError(f"Unsupported asset class: {self.asset_class}")
         return class_defaults[self.asset_class]
+
+    def _calculate_performance(self, df_res):
+        """
+        Calculate portfolio performance over time from the transaction log.
+        """
+        # Initialize variables
+        cash = 0
+        holdings = {}
+        performance_data = []
+
+        # Iterate through the transaction log
+        for _, row in df_res.iterrows():
+            date = row['Date']
+            action = row['Action']
+            ticker = row['Ticker']
+            quantity = row['Quantity']
+            price = row['Price']
+            cash = row['Cash']  # Update cash from the log
+
+            # Update holdings based on the action
+            if action == 'BUY':
+                holdings[ticker] = holdings.get(ticker, 0) + quantity
+            elif action == 'SELL':
+                holdings[ticker] = holdings.get(ticker, 0) - quantity
+                if holdings[ticker] <= 0:
+                    del holdings[ticker]  # Remove if quantity is zero
+
+            # Calculate total value of holdings
+            holdings_value = sum(qty * price for ticker, qty in holdings.items())
+            total_value = cash + holdings_value
+
+            # Save performance data
+            performance_data.append({'Date': date, 'Portfolio Value': total_value})
+
+        # Convert to DataFrame and return
+        return pd.DataFrame(performance_data)
+    
+    def _plot_performance(self, performance_df):
+        """
+        Plot portfolio performance metrics over time.
+        """
+        plt.figure(figsize=(12, 8))
+
+        # Plot each metric
+        plt.plot(performance_df['Date'], performance_df['Portfolio Value'], label='Portfolio Value', marker='o', linewidth=2)
+
+        # Add labels, title, and legend
+        plt.xlabel('Date')
+        plt.ylabel('Value')
+        plt.title('Portfolio Performance Metrics Over Time')
+        plt.legend()
+        plt.grid(True)
+
+        # Rotate x-axis labels for better readability
+        plt.xticks(rotation=45)
+
+        # Adjust layout
+        plt.tight_layout()
+        plt.show()
 
     def run_backtest(self):
         # Fetch class-specific defaults
@@ -85,6 +147,7 @@ class UniversalBacktest:
         rebalance_flag = self.rebalance_flag or defaults["rebalance_flag"]
         risk_model = self.risk_model or defaults["risk_model"]
         information_class = self.information_class or defaults["information_class"]
+        name_blockchain = self.name_blockchain or defaults["name_blockchain"]
 
         # Include expiry_column only for commodities
         extra_attributes = {}
@@ -102,14 +165,18 @@ class UniversalBacktest:
             adj_close_column=adj_close_column,
             rebalance_flag=rebalance_flag,
             risk_model=risk_model,
+            name_blockchain = name_blockchain,
             **extra_attributes,
         )
         backtest_instance.universe = universe
         # Run the backtest
-        result_log = backtest_instance.run_backtest()
+        backtest_instance.run_backtest()
+        df_res = pd.read_csv(f"backtests/{backtest_instance.backtest_name}.csv")
 
-        return result_log
+        portfolio_performance = self._calculate_performance(df_res)
+        self._plot_performance(portfolio_performance)
 
+        return df_res
 
 # --------------------------------------------------------------------------------
 # Some examples
