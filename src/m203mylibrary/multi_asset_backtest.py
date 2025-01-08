@@ -38,6 +38,7 @@ class_defaults = {
         "rebalance_flag": EndOfMonth,
         "risk_model": StopLoss,
         "broker_class": Broker,
+        "name_blockchain" : 'backtest'
     },
     "commodities": {
         "backtest_class": CommodityBacktest,
@@ -47,6 +48,7 @@ class_defaults = {
         "rebalance_flag": EndOfMonthOrExpiry,
         "risk_model": CommodityStopLoss,
         "broker_class": CommodityBroker,
+        "name_blockchain" : 'commodity_backtest',
         "expiry_column": "futures expiry",  # Specific to commodities
     },
 }
@@ -65,6 +67,7 @@ class UniversalBacktest:
     risk_model: type = None
     adj_close_column: str = None
     information_class: str = None
+    name_blockchain: str = None
     expiry_column: str = None  # Specific to commodities
 
     def _get_default_attributes(self):
@@ -106,7 +109,7 @@ class UniversalBacktest:
             total_value = cash + holdings_value
 
             # Save performance data
-            performance_data.append({'Date': date, 'Cash': cash, 'Holdings Value': holdings_value, 'Portfolio Value': total_value})
+            performance_data.append({'Date': date, 'Portfolio Value': total_value})
 
         # Convert to DataFrame and return
         return pd.DataFrame(performance_data)
@@ -119,8 +122,6 @@ class UniversalBacktest:
 
         # Plot each metric
         plt.plot(performance_df['Date'], performance_df['Portfolio Value'], label='Portfolio Value', marker='o', linewidth=2)
-        plt.plot(performance_df['Date'], performance_df['Cash'], label='Cash', marker='s', linestyle='--', linewidth=1.5)
-        plt.plot(performance_df['Date'], performance_df['Holdings Value'], label='Holdings Value', marker='^', linestyle='-.', linewidth=1.5)
 
         # Add labels, title, and legend
         plt.xlabel('Date')
@@ -146,6 +147,7 @@ class UniversalBacktest:
         rebalance_flag = self.rebalance_flag or defaults["rebalance_flag"]
         risk_model = self.risk_model or defaults["risk_model"]
         information_class = self.information_class or defaults["information_class"]
+        name_blockchain = self.name_blockchain or defaults["name_blockchain"]
 
         # Include expiry_column only for commodities
         extra_attributes = {}
@@ -163,6 +165,7 @@ class UniversalBacktest:
             adj_close_column=adj_close_column,
             rebalance_flag=rebalance_flag,
             risk_model=risk_model,
+            name_blockchain = name_blockchain,
             **extra_attributes,
         )
         backtest_instance.universe = universe
@@ -172,6 +175,8 @@ class UniversalBacktest:
 
         portfolio_performance = self._calculate_performance(df_res)
         self._plot_performance(portfolio_performance)
+
+        return df_res
 
 # --------------------------------------------------------------------------------
 # Some examples
