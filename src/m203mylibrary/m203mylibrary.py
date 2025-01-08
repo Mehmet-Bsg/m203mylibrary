@@ -1,9 +1,9 @@
-from pybacktestchain.data_module import FirstTwoMoments
-from pybacktestchain.broker import Backtest, StopLoss
-from pybacktestchain.blockchain import load_blockchain
-from datetime import datetime
+# create a function that calls all tests 
+# use pytest 
+# pytest.main()
 
-def test_function():
-    print("Using the package works !")
-    return
+import pytest
 
+def test_all():
+    # pytest, folder is tests 
+    pytest.main(['tests'])
