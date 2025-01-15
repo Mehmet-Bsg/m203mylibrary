@@ -69,7 +69,7 @@ The `UniversalBacktest` class is the centerpiece of the library, offering an enh
 1. **Stock Backtest**
 
 ```python
-from m203mylibrary import UniversalBacktest
+from m203mylibrary.multi_asset_backtest import UniversalBacktest
 from datetime import datetime
 
 backtest = UniversalBacktest(
@@ -86,11 +86,11 @@ result_log = backtest.run_backtest()
 2. **Commodity Backtest with Custom Universe**
 
 ```python
-from m203mylibrary import UniversalBacktest
+from m203mylibrary.multi_asset_backtest import UniversalBacktest
 from datetime import datetime
 
 backtest = UniversalBacktest(
-    initial_date=datetime(2020, 1, 1),
+    initial_date=datetime(2022, 1, 1),
     final_date=datetime(2024, 1, 1),
     asset_class="commodities",
     universe=["CL=F", "NG=F", "ZS=F"],  # Custom tickers for Crude Oil, Natural Gas, Soybeans
