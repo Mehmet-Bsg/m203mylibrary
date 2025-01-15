@@ -121,7 +121,6 @@ print(f"The expiry date for {ticker} futures purchased on {buy_date} is {expiry_
 
 The `UniversalBacktest` class automatically calculates and plots performance metrics, including:
 - **Portfolio Value**: Total value of holdings and cash.
-- **Holdings Value**: Value of all held positions.
 - **Cash**: Remaining liquid capital.
 
 ```python
