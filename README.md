@@ -1,7 +1,7 @@
 
-# m203BacktestLibrary
+# m203mylibrary
 
-`m203BacktestLibrary` is a Python package that extends the functionality of the `pybacktestchain` library by introducing commodity futures contracts. The library introduces new features like handling futures expirations, a universal backtest class and performance plotting.
+`m203mylibrary` is a Python package that extends the functionality of the `pybacktestchain` library by introducing commodity futures contracts. The library introduces new features like handling futures expirations, a universal backtest class and performance plotting.
 
 ## What's New
 
@@ -34,7 +34,7 @@ Performance metrics are now with the `UniversalBacktest` class. This feature ena
 ## Installation
 
 ```bash
-$ pip install m203backtestlibrary
+$ pip install m203mylibrary
 ```
 
 ---
@@ -69,7 +69,7 @@ The `UniversalBacktest` class is the centerpiece of the library, offering an enh
 1. **Stock Backtest**
 
 ```python
-from m203backtestlibrary import UniversalBacktest
+from m203mylibrary import UniversalBacktest
 from datetime import datetime
 
 backtest = UniversalBacktest(
@@ -86,7 +86,7 @@ result_log = backtest.run_backtest()
 2. **Commodity Backtest with Custom Universe**
 
 ```python
-from m203backtestlibrary import UniversalBacktest
+from m203mylibrary import UniversalBacktest
 from datetime import datetime
 
 backtest = UniversalBacktest(
@@ -106,7 +106,7 @@ result_log = backtest.run_backtest()
 ### Futures Expiration Example
 
 ```python
-from m203backtestlibrary.commodities_data_module import get_futures_expiry
+from m203mylibrary.commodities_data_module import get_futures_expiry
 
 buy_date = "2024-12-15"
 ticker = "CL=F"  # Crude Oil futures
@@ -126,7 +126,7 @@ The `UniversalBacktest` class automatically calculates and plots performance met
 
 ```python
 # Example Backtest with Plotting
-from m203backtestlibrary import UniversalBacktest
+from m203mylibrary import UniversalBacktest
 from datetime import datetime
 
 backtest = UniversalBacktest(
@@ -150,8 +150,8 @@ Interested in contributing? Check out the contributing guidelines. Please note t
 
 ## License
 
-`m203backtestlibrary` was created by Mehmet Basagac. It is licensed under the terms of the MIT license.
+`m203mylibrary` was created by Mehmet Basagac. It is licensed under the terms of the MIT license.
 
 ## Credits
 
-`m203backtestlibrary` builds upon `pybacktestchain` and was developed using [`cookiecutter`](https://cookiecutter.readthedocs.io/en/latest/) with the `py-pkgs-cookiecutter` [template](https://github.com/py-pkgs/py-pkgs-cookiecutter).
+`m203mylibrary` builds upon `pybacktestchain` and was developed using [`cookiecutter`](https://cookiecutter.readthedocs.io/en/latest/) with the `py-pkgs-cookiecutter` [template](https://github.com/py-pkgs/py-pkgs-cookiecutter).
