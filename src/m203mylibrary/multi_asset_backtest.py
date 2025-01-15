@@ -109,7 +109,7 @@ class UniversalBacktest:
             total_value = cash + holdings_value
 
             # Save performance data
-            performance_data.append({'Date': date, 'Portfolio Value': total_value})
+            performance_data.append({'Date': date, 'Portfolio Value': total_value, 'Cash': cash})
 
         # Convert to DataFrame and return
         return pd.DataFrame(performance_data)
@@ -121,7 +121,9 @@ class UniversalBacktest:
         plt.figure(figsize=(12, 8))
 
         # Plot each metric
-        plt.plot(performance_df['Date'], performance_df['Portfolio Value'], label='Portfolio Value', marker='o', linewidth=2)
+        plt.plot(performance_df['Date'], performance_df['Portfolio Value'], label='Portfolio Value', marker='o', linewidth=1)
+
+        plt.plot(performance_df['Date'], performance_df['Cash'], label='Cash', marker='x', linewidth=1)
 
         # Add labels, title, and legend
         plt.xlabel('Date')
