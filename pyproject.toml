@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "m203mylibrary"
-version = "0.1.1"
+version = "0.1.2"
 description = "Library created for the m203 python project. It is adding new features to the library pybacktestchain"
 authors = ["Mehmet Basagac"]
 license = "MIT"
